@@ -1,0 +1,82 @@
+{
+  "entities": {
+    "Capsule": {
+      "title": "Capsule",
+      "description": "A secure, sealed container for holding time-locked memories, files, and recordings.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the capsule."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the memory archive."
+        },
+        "description": {
+          "type": "string",
+          "description": "Summary or note regarding the contents."
+        },
+        "unlockDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO date-time string indicating when the capsule can be opened."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["case", "chest", "flask", "letter"],
+          "description": "Visual container type."
+        },
+        "color": {
+          "type": "string",
+          "enum": ["amber", "emerald", "rose", "slate", "cobalt"],
+          "description": "Visual accent color."
+        },
+        "style": {
+          "type": "integer",
+          "description": "Style variant index."
+        },
+        "isGift": {
+          "type": "boolean",
+          "description": "Flag indicating if this capsule was sent as a shareable link/gift."
+        },
+        "giftTo": {
+          "type": "string",
+          "description": "Name of the recipient."
+        },
+        "giftFrom": {
+          "type": "string",
+          "description": "Name of the sender/creator."
+        },
+        "giftLink": {
+          "type": "string",
+          "description": "Public sharing URL for the gift landing page."
+        },
+        "isOpened": {
+          "type": "boolean",
+          "description": "Flag indicating whether the capsule has been opened."
+        },
+        "items": {
+          "type": "array",
+          "description": "List of keepsake items stored within the capsule."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO date-time when the capsule was sealed."
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the owner user in Firebase Authentication."
+        }
+      },
+      "required": ["id", "title", "unlockDate", "category", "color", "isGift", "isOpened", "items", "createdAt", "userId"]
+    }
+  },
+  "firestore": {
+    "/capsules/{capsuleId}": {
+      "schema": "Capsule",
+      "description": "Master collection storing all time capsule vaults."
+    }
+  }
+}

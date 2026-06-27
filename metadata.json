@@ -1,0 +1,6 @@
+{
+  "name": "Capsule",
+  "description": "A private time-capsule app for storing memories, letters, and voice notes inside tactile locked archives that open on chosen future dates.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

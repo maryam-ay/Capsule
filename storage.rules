@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /capsules/{capsuleId}/{allPaths=**} {
+      
+      // Allow read access if either:
+      // 1. The authenticated user is the owner of the associated capsule in Firestore.
+      // 2. The associated capsule is marked as a public gift (isGift == true).
+      allow read: if (
+        request.auth != null && 
+        firestore.exists(/databases/(default)/documents/capsules/$(capsuleId)) &&
+        firestore.get(/databases/(default)/documents/capsules/$(capsuleId)).data.userId == request.auth.uid
+      ) || (
+        firestore.exists(/databases/(default)/documents/capsules/$(capsuleId)) &&
+        firestore.get(/databases/(default)/documents/capsules/$(capsuleId)).data.isGift == true
+      );
+
+      // Allow write access (uploading new media keepsakes) if:
+      // 1. The user is authenticated AND
+      // 2. The capsule document does not exist yet (creating a new capsule) OR the user is the verified owner of the capsule document in Firestore.
+      allow create: if request.auth != null && (
+        !firestore.exists(/databases/(default)/documents/capsules/$(capsuleId)) || 
+        firestore.get(/databases/(default)/documents/capsules/$(capsuleId)).data.userId == request.auth.uid
+      ) && request.resource.size < 10 * 1024 * 1024; // Limit file uploads to 10MB to avoid Denial of Wallet resource attacks
+
+      // Allow update/delete only if the authenticated user is the verified owner of the capsule document
+      allow update, delete: if request.auth != null && 
+                            firestore.exists(/databases/(default)/documents/capsules/$(capsuleId)) &&
+                            firestore.get(/databases/(default)/documents/capsules/$(capsuleId)).data.userId == request.auth.uid;
+    }
+  }
+}

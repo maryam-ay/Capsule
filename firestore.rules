@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper to validate standard alphanumeric / hyphen / underscore document IDs
+    function isValidId(id) {
+      return id is string && id.size() >= 5 && id.size() <= 100 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper to check if user is signed in
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper to validate the capsule schema on creation and update
+    function isValidCapsule(data) {
+      return data.id is string && data.id.size() <= 100 &&
+             data.title is string && data.title.size() <= 150 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.unlockDate is string && data.unlockDate.size() <= 50 &&
+             data.category is string && (data.category in ['case', 'chest', 'flask', 'letter']) &&
+             data.color is string && (data.color in ['amber', 'emerald', 'rose', 'slate', 'cobalt']) &&
+             data.style is int &&
+             data.isGift is bool &&
+             data.isOpened is bool &&
+             data.items is list && data.items.size() <= 50 &&
+             data.createdAt is string && data.createdAt.size() <= 50 &&
+             data.userId == request.auth.uid;
+    }
+
+    match /capsules/{capsuleId} {
+      // Allow single document read if the current user is the owner OR if the capsule is a public shared gift
+      allow get: if isValidId(capsuleId) && (
+        (isSignedIn() && resource.data.userId == request.auth.uid) || 
+        (resource.data.isGift == true)
+      );
+
+      // Security Hardening: Only allow listing/querying of capsules owned by the current authenticated user.
+      // This prevents users from list-harvesting other users' public gifts or private data.
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // Allow creation only if signed in, document ID is secure, and payload passes all validation checks
+      allow create: if isSignedIn() && isValidId(capsuleId) && isValidCapsule(request.resource.data);
+
+      // Allow updates only if the user owns the capsule, the updated data is valid, and immutable fields are untouched
+      allow update: if isSignedIn() && isValidId(capsuleId) &&
+                    resource.data.userId == request.auth.uid &&
+                    isValidCapsule(request.resource.data) &&
+                    request.resource.data.userId == resource.data.userId &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+
+      // Allow deletion only if the authenticated user is the owner of the capsule
+      allow delete: if isSignedIn() && isValidId(capsuleId) && resource.data.userId == request.auth.uid;
+    }
+  }
+}

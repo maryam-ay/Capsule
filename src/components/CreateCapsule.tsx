@@ -48,6 +48,7 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
   const [imageFileName, setImageFileName] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioFileInputRef = useRef<HTMLInputElement>(null);
 
   // Real files states to upload on Sealing
   const [currentImageFile, setCurrentImageFile] = useState<File | null>(null);
@@ -58,6 +59,7 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
 
   const [voiceTitle, setVoiceTitle] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [isMicBlocked, setIsMicBlocked] = useState(false);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string>("");
   const [recordingTimer, setRecordingTimer] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -143,6 +145,7 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
+      setIsMicBlocked(false);
       
       // Determine the best supported mimeType
       let mimeType = "audio/webm";
@@ -192,6 +195,7 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
       }, 1000);
     } catch (e) {
       // Fallback: Simulation of Recording if mic denied or sandboxed iframe prevents usage
+      setIsMicBlocked(true);
       setIsRecording(true);
       setRecordingTimer(0);
       recordingIntervalRef.current = window.setInterval(() => {
@@ -216,9 +220,31 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
       mediaRecorderRef.current.stop();
     } else if (isRecording) {
       // simulated save
-      setRecordedAudioUrl("https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg");
+      setIsMicBlocked(true);
+      setRecordedAudioUrl("https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav");
     }
     setIsRecording(false);
+  };
+
+  // Handle manual audio file uploading as a high-fidelity alternative
+  const handleAudioFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setCurrentAudioBlob(file);
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result) {
+          setRecordedAudioUrl(reader.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+      
+      if (!voiceTitle.trim()) {
+        const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        setVoiceTitle(nameWithoutExt);
+      }
+    }
   };
 
   // Compile any filled individual item fields into lists simultaneously
@@ -269,7 +295,7 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
         id,
         type: "voice",
         title: voiceTitle.trim() || "Recorded Accent",
-        content: recordedAudioUrl || "https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg",
+        content: recordedAudioUrl || "https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav",
         duration: recordingTimer || 12
       });
       if (currentAudioBlob) {
@@ -341,7 +367,7 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
         id: `item-${Date.now()}`,
         type: "voice",
         title: voiceTitle.trim() || "Recorded Accent",
-        content: recordedAudioUrl || "https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg",
+        content: recordedAudioUrl || "https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav",
         duration: recordingTimer || 12
       };
       // reset
@@ -835,6 +861,28 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
                   className="w-full px-3 py-2 rounded-sm bg-[#1A1614] border border-[#2D241E] text-[#F2EFE9] text-xs focus:outline-none"
                 />
 
+                <input
+                  type="file"
+                  ref={audioFileInputRef}
+                  onChange={handleAudioFileSelect}
+                  accept="audio/*"
+                  className="hidden"
+                />
+
+                {isMicBlocked && !currentAudioBlob && (
+                  <div className="bg-amber-950/20 border border-amber-800/40 p-2.5 rounded-sm text-left text-[11px] text-amber-300 space-y-1">
+                    <p className="font-semibold flex items-center gap-1">
+                      ⚠️ Microphone Restricted by Sandbox/Browser
+                    </p>
+                    <p className="opacity-80 leading-normal">
+                      Your browser blocked microphone access (often due to iframe sandbox security rules). Custom recording is simulated with a placeholder sound.
+                    </p>
+                    <p className="font-medium">
+                      💡 Solution: You can upload your own voice memos, music, or audio recordings below!
+                    </p>
+                  </div>
+                )}
+
                 <div className="bg-[#1A1614] rounded-sm p-4 border border-[#2D241E] text-center flex flex-col items-center justify-center min-h-[140px] gap-3">
                   {isRecording ? (
                     <div className="space-y-2">
@@ -856,9 +904,26 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
                       </button>
                     </div>
                   ) : recordedAudioUrl ? (
-                    <div className="space-y-3">
+                    <div className="space-y-3 w-full">
                       <Volume2 className="w-8 h-8 text-sky-400 mx-auto animate-bounce" />
-                      <p className="text-xs font-mono text-sky-400 font-semibold">Voice Note Captured successfully!</p>
+                      
+                      {recordedAudioUrl === "https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav" ? (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-mono text-amber-400 font-semibold">Simulated Placeholder Recorded</p>
+                          <p className="text-[10px] text-[#F2EFE9]/50 max-w-xs mx-auto">
+                            Since microphone permission was unavailable, we used a nostalgic bell-chime tone. Upload a real voice memo file to store actual audio!
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-xs font-mono text-sky-400 font-semibold">
+                          {currentAudioBlob ? "Audio File Loaded Successfully!" : "Voice Note Captured successfully!"}
+                        </p>
+                      )}
+                      
+                      {/* Audio Player preview */}
+                      <div className="max-w-xs mx-auto pb-1">
+                        <audio src={recordedAudioUrl} controls className="w-full h-8 mx-auto accent-[#C5A059]" />
+                      </div>
                       
                       <div className="flex justify-center gap-2">
                         <button
@@ -869,21 +934,39 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
                           <Mic className="w-3.5 h-3.5" />
                           Re-record
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => audioFileInputRef.current?.click()}
+                          className="flex items-center gap-1 bg-[#1A1614] border border-[#2D241E] hover:bg-[#14110F] text-sky-400 px-3 py-1.5 rounded-sm text-xs"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          Upload Different File
+                        </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       <Mic className="w-8 h-8 text-[#F2EFE9]/30 mx-auto" />
-                      <p className="text-xs font-serif text-[#F2EFE9]/40">Record an audio memory using your mic</p>
+                      <p className="text-xs font-serif text-[#F2EFE9]/40">Add audio memory using your mic or upload an audio file</p>
                       
-                      <button
-                        type="button"
-                        onClick={startVoiceRecording}
-                        className="flex items-center gap-2 bg-[#C5A059] hover:bg-[#b08e4e] text-[#14110F] px-5 py-2.5 rounded-full text-xs font-semibold shadow-md"
-                      >
-                        <Mic className="w-4 h-4" />
-                        Record Voice Note
-                      </button>
+                      <div className="flex flex-col sm:flex-row gap-2 justify-center items-center">
+                        <button
+                          type="button"
+                          onClick={startVoiceRecording}
+                          className="flex items-center justify-center gap-2 bg-[#C5A059] hover:bg-[#b08e4e] text-[#14110F] px-4 py-2 rounded-full text-xs font-semibold shadow-md min-w-[150px]"
+                        >
+                          <Mic className="w-3.5 h-3.5" />
+                          Record Mic
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => audioFileInputRef.current?.click()}
+                          className="flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-[#2D241E] text-sky-400 px-4 py-2 rounded-full text-xs font-semibold shadow-md min-w-[150px]"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          Upload Audio File
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

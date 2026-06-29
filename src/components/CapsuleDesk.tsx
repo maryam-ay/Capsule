@@ -41,6 +41,8 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule, onDelete
   const [playingItem, setPlayingItem] = useState<string | null>(null);
   const [audioProgress, setAudioProgress] = useState(0);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const synthIntervalRef = useRef<any>(null);
+  const synthCtxRef = useRef<any>(null);
 
   // Copy gift link state
   const [isCopied, setIsCopied] = useState(false);
@@ -113,18 +115,107 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule, onDelete
     }, 1200);
   };
 
+  const playSynthesizedChime = (item: CapsuleItem) => {
+    setPlayingItem(item.id);
+    setAudioProgress(0);
+
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const ctx = new AudioContextClass();
+        synthCtxRef.current = ctx;
+        const now = ctx.currentTime;
+        
+        // Nostalgic melodic sequence (C major pentatonic: C4 -> E4 -> G4 -> C5 -> E5 -> G5)
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99];
+        
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          
+          osc.type = "sine";
+          const startTime = now + idx * 0.25;
+          osc.frequency.setValueAtTime(freq, startTime);
+          
+          // Nostalgic tape-vibrato LFO
+          const lfo = ctx.createOscillator();
+          const lfoGain = ctx.createGain();
+          lfo.frequency.value = 4.0; 
+          lfoGain.gain.value = 1.2; 
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.frequency);
+          
+          // Slow rise and extremely long ringing bell-like decay
+          gain.gain.setValueAtTime(0, now);
+          gain.gain.linearRampToValueAtTime(0.12, startTime + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 6.0);
+          
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          
+          lfo.start(now);
+          osc.start(startTime);
+          
+          osc.stop(startTime + 6.2);
+          lfo.stop(startTime + 6.2);
+        });
+      }
+    } catch (err) {
+      console.error("Web Audio synthesis failed:", err);
+    }
+
+    // Animate progress bar over 8 seconds (the duration of the chime)
+    let elapsed = 0;
+    const durationMs = 8000;
+    const stepMs = 100;
+    
+    if (synthIntervalRef.current) {
+      clearInterval(synthIntervalRef.current);
+    }
+    
+    synthIntervalRef.current = setInterval(() => {
+      elapsed += stepMs;
+      const pct = (elapsed / durationMs) * 100;
+      if (pct >= 100) {
+        clearInterval(synthIntervalRef.current);
+        synthIntervalRef.current = null;
+        setPlayingItem(null);
+        setAudioProgress(0);
+      } else {
+        setAudioProgress(pct);
+      }
+    }, stepMs);
+  };
+
   // Real Audio Playback Controller
   const toggleAudio = (item: CapsuleItem) => {
-    if (!audioPlayerRef.current) return;
-
     if (playingItem === item.id) {
       // Pause
-      audioPlayerRef.current.pause();
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+      if (synthIntervalRef.current) {
+        clearInterval(synthIntervalRef.current);
+        synthIntervalRef.current = null;
+      }
+      if (synthCtxRef.current) {
+        try {
+          synthCtxRef.current.close();
+        } catch (e) {}
+        synthCtxRef.current = null;
+      }
       setPlayingItem(null);
+      setAudioProgress(0);
     } else {
       // Play
       let audioUrl = item.content;
       
+      // If it's a simulated fallback or if standard player doesn't exist, use synthesizer chime!
+      if (audioUrl.includes("rain_heavy_loud.ogg") || audioUrl.includes("2568-84.wav") || !audioPlayerRef.current) {
+        playSynthesizedChime(item);
+        return;
+      }
+
       // If it's a Cloudinary URL, ensure we transcode it to .mp3 on-the-fly for universal compatibility
       if (audioUrl.includes("res.cloudinary.com")) {
         const parts = audioUrl.split('.');
@@ -147,9 +238,8 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule, onDelete
           setPlayingItem(item.id);
         })
         .catch((err) => {
-          console.error("Audio playback failed:", err);
-          alert("Audio playback failed. The audio driver might be blocked, or the file format is not supported by your browser. Please try again.");
-          setPlayingItem(null);
+          console.warn("Standard audio playback failed, falling back to beautiful synthesized chime:", err);
+          playSynthesizedChime(item);
         });
     }
   };
@@ -158,6 +248,16 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule, onDelete
     // Stop audio when component unmounts or active item changes
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
+    }
+    if (synthIntervalRef.current) {
+      clearInterval(synthIntervalRef.current);
+      synthIntervalRef.current = null;
+    }
+    if (synthCtxRef.current) {
+      try {
+        synthCtxRef.current.close();
+      } catch (e) {}
+      synthCtxRef.current = null;
     }
     setPlayingItem(null);
     setAudioProgress(0);
@@ -339,6 +439,50 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule, onDelete
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* Danger Zone: Delete Locked Vault */}
+            <div className="max-w-md w-full mt-6 pt-4 border-t border-[#2D241E]/50 space-y-2 z-20">
+              <div className="text-[9px] text-rose-500/80 tracking-wider font-mono uppercase text-center">Danger Zone</div>
+              
+              {!showDeleteConfirm ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full flex items-center justify-center gap-1.5 bg-rose-950/10 hover:bg-rose-950/30 border border-rose-950/40 text-rose-400/80 hover:text-rose-300 px-3 py-2 rounded-sm text-[11px] font-sans font-medium transition-all cursor-pointer"
+                  id="desk-btn-delete-locked"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500/70" />
+                  <span>Delete Locked Archive Volume</span>
+                </button>
+              ) : (
+                <div className="bg-rose-950/20 border border-rose-800/40 p-3 rounded-sm space-y-3 text-center">
+                  <p className="text-[11px] text-rose-300 leading-normal font-sans">
+                    Are you sure you want to permanently destroy this locked archive before it unlocks? This action is irreversible.
+                  </p>
+                  <div className="flex gap-2 justify-center max-w-xs mx-auto">
+                    <button
+                      onClick={() => {
+                        if (onDeleteCapsule) {
+                          onDeleteCapsule(capsule.id);
+                        } else {
+                          alert("Deletion is only available from the main library scope.");
+                        }
+                      }}
+                      className="flex-1 bg-rose-800 hover:bg-rose-700 text-[#F2EFE9] text-[10px] font-bold py-1.5 rounded-sm uppercase tracking-wider transition-all cursor-pointer"
+                      id="desk-btn-confirm-delete-locked"
+                    >
+                      Yes, Delete Vault
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="flex-1 bg-zinc-900 hover:bg-zinc-800 border border-[#2D241E] text-zinc-400 text-[10px] py-1.5 rounded-sm uppercase tracking-wider transition-all cursor-pointer"
+                      id="desk-btn-cancel-delete-locked"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

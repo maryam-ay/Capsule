@@ -6,7 +6,7 @@
 import React, { useState, useRef } from "react";
 import { Capsule, CapsuleCategory, CapsuleColor, CapsuleItem } from "../types";
 import { getCapsuleColorClasses } from "../utils/storage";
-import { uploadMediaFile } from "../utils/firebaseStorage";
+import { uploadToCloudinary } from "../utils/cloudinary";
 import { 
   ArrowLeft, Archive, Calendar, Lock, Check, Plus, Trash2, 
   Upload, FileText, Image, Volume2, Link as LinkIcon, Mic, MicOff, Square
@@ -299,56 +299,62 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
     setIsSaving(true);
     setSaveProgressMsg("Sealing the memory capsule...");
 
-    const capsuleId = `capsule-${Date.now()}`;
-    const uploadedItems = [...items];
+    try {
+      const capsuleId = `capsule-${Date.now()}`;
+      const uploadedItems = [...items];
 
-    // Upload files to Firebase Storage
-    for (let i = 0; i < uploadedItems.length; i++) {
-      const item = uploadedItems[i];
-      if (filesToUpload[item.id]) {
-        const uploadEntry = filesToUpload[item.id];
-        setSaveProgressMsg(`Sealing memory: ${item.title}...`);
-        try {
+      // Upload files to Cloudinary sequentially, with progress tracking
+      for (let i = 0; i < uploadedItems.length; i++) {
+        const item = uploadedItems[i];
+        if (filesToUpload[item.id]) {
+          const uploadEntry = filesToUpload[item.id];
+          setSaveProgressMsg(`Preparing memory: ${item.title}...`);
+          
           // Convert Blob to File if needed
           let fileToUpload: File;
           if (uploadEntry.file instanceof File) {
             fileToUpload = uploadEntry.file;
           } else {
-            fileToUpload = new File([uploadEntry.file], uploadEntry.name, { type: uploadEntry.file.type });
+            fileToUpload = new File([uploadEntry.file], uploadEntry.name, { type: uploadEntry.file.type || "audio/ogg" });
           }
 
-          const downloadUrl = await uploadMediaFile(fileToUpload, capsuleId, uploadEntry.type);
+          // Images use "image" resource type; voice recordings use "video" in Cloudinary
+          const resourceType = uploadEntry.type === "image" ? "image" : "video";
+          
+          const downloadUrl = await uploadToCloudinary(fileToUpload, resourceType, {
+            onProgress: (percent) => {
+              setSaveProgressMsg(`Uploading ${item.title} (${percent}%)...`);
+            }
+          });
+
           uploadedItems[i] = {
             ...item,
             content: downloadUrl
           };
-        } catch (error) {
-          console.error(`Failed to upload media for item ${item.id}:`, error);
         }
       }
-    }
 
-    const newCapsule: Capsule = {
-      id: capsuleId,
-      title: title.trim(),
-      description: description.trim() || "A keepsake for the future",
-      unlockDate: new Date(unlockDate).toISOString(),
-      category,
-      color,
-      style: Math.floor(Math.random() * 3) + 1, // select visual style variant
-      isGift,
-      giftTo: isGift ? giftTo.trim() || "Recipient" : undefined,
-      giftFrom: isGift ? giftFrom.trim() || "Benefactor" : undefined,
-      isOpened: false,
-      items: uploadedItems,
-      createdAt: new Date().toISOString()
-    };
+      const newCapsule: Capsule = {
+        id: capsuleId,
+        title: title.trim(),
+        description: description.trim() || "A keepsake for the future",
+        unlockDate: new Date(unlockDate).toISOString(),
+        category,
+        color,
+        style: Math.floor(Math.random() * 3) + 1, // select visual style variant
+        isGift,
+        giftTo: isGift ? giftTo.trim() || "Recipient" : undefined,
+        giftFrom: isGift ? giftFrom.trim() || "Benefactor" : undefined,
+        isOpened: false,
+        items: uploadedItems,
+        createdAt: new Date().toISOString()
+      };
 
-    setSaveProgressMsg("Saving records to Firestore...");
-    try {
+      setSaveProgressMsg("Saving records to Firestore...");
       await onSave(newCapsule);
-    } catch (e) {
-      console.error(e);
+    } catch (error: any) {
+      console.error("Failed to seal and save capsule:", error);
+      alert(`Archival Sealing Failed: ${error.message || "An unknown network error occurred. Please verify your Cloudinary configurations in the settings."}`);
     } finally {
       setIsSaving(false);
     }

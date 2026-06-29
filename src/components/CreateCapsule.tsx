@@ -413,6 +413,10 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
       const capsuleId = `capsule-${Date.now()}`;
       const uploadedItems = [...finalItems];
 
+      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+      const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+      const isCloudinaryConfigured = !!(cloudName && uploadPreset);
+
       // Upload files to Cloudinary sequentially, with progress tracking
       for (let i = 0; i < uploadedItems.length; i++) {
         const item = uploadedItems[i];
@@ -420,27 +424,37 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
           const uploadEntry = finalFilesToUpload[item.id];
           setSaveProgressMsg(`Preparing memory: ${item.title}...`);
           
-          // Convert Blob to File if needed
-          let fileToUpload: File;
-          if (uploadEntry.file instanceof File) {
-            fileToUpload = uploadEntry.file;
-          } else {
-            fileToUpload = new File([uploadEntry.file], uploadEntry.name, { type: uploadEntry.file.type || "audio/ogg" });
-          }
-
-          // Images use "image" resource type; voice recordings use "video" in Cloudinary
-          const resourceType = uploadEntry.type === "image" ? "image" : "video";
-          
-          const downloadUrl = await uploadToCloudinary(fileToUpload, resourceType, {
-            onProgress: (percent) => {
-              setSaveProgressMsg(`Uploading ${item.title} (${percent}%)...`);
+          if (isCloudinaryConfigured) {
+            // Convert Blob to File if needed
+            let fileToUpload: File;
+            if (uploadEntry.file instanceof File) {
+              fileToUpload = uploadEntry.file;
+            } else {
+              fileToUpload = new File([uploadEntry.file], uploadEntry.name, { type: uploadEntry.file.type || "audio/ogg" });
             }
-          });
 
-          uploadedItems[i] = {
-            ...item,
-            content: downloadUrl
-          };
+            // Images use "image" resource type; voice recordings use "video" in Cloudinary
+            const resourceType = uploadEntry.type === "image" ? "image" : "video";
+            
+            try {
+              const downloadUrl = await uploadToCloudinary(fileToUpload, resourceType, {
+                onProgress: (percent) => {
+                  setSaveProgressMsg(`Uploading ${item.title} (${percent}%)...`);
+                }
+              });
+
+              uploadedItems[i] = {
+                ...item,
+                content: downloadUrl
+              };
+            } catch (uploadErr: any) {
+              console.warn("Cloudinary upload failed, falling back to local data URL embedding:", uploadErr);
+              // Fallback to existing base64 content
+            }
+          } else {
+            console.log("Cloudinary is not configured. Embedding data as local Base64 URL.");
+            // Fallback to existing base64 content
+          }
         }
       }
 

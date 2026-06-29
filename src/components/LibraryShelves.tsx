@@ -19,6 +19,16 @@ type FilterType = "all" | "locked" | "ready" | "opened" | "gifts";
 export default function LibraryShelves({ capsules, onSelectCapsule, onCreateClick }: LibraryShelvesProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
+  const [pullingId, setPullingId] = useState<string | null>(null);
+
+  const handleSelectWithAnimation = (capsule: Capsule) => {
+    if (pullingId) return;
+    setPullingId(capsule.id);
+    setTimeout(() => {
+      onSelectCapsule(capsule);
+      setPullingId(null);
+    }, 950);
+  };
 
   // Determine locked status
   const isCapsuleLocked = (c: Capsule) => new Date(c.unlockDate) > new Date();
@@ -129,7 +139,12 @@ export default function LibraryShelves({ capsules, onSelectCapsule, onCreateClic
             <div className="flex flex-row justify-center items-end gap-5 sm:gap-10 px-6 sm:px-12 w-full pb-1 z-20">
               {shelfItems.length > 0 ? (
                 shelfItems.map((c) => (
-                  <ShelfItem key={c.id} capsule={c} onSelect={onSelectCapsule} />
+                  <ShelfItem 
+                    key={c.id} 
+                    capsule={c} 
+                    onSelect={handleSelectWithAnimation} 
+                    isPulling={pullingId === c.id}
+                  />
                 ))
               ) : (
                 <div className="text-center py-10 opacity-20 select-none">

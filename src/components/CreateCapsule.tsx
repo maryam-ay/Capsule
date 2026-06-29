@@ -143,7 +143,23 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(stream);
+      
+      // Determine the best supported mimeType
+      let mimeType = "audio/webm";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) {
+          mimeType = "audio/ogg;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        } else if (MediaRecorder.isTypeSupported("audio/aac")) {
+          mimeType = "audio/aac";
+        }
+      }
+
+      const options = mimeType ? { mimeType } : undefined;
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
       
       mediaRecorder.ondataavailable = (event) => {
@@ -153,7 +169,7 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
       };
 
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/ogg; codecs=opus" });
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         setCurrentAudioBlob(audioBlob);
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -205,8 +221,96 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
     setIsRecording(false);
   };
 
-  // Compile individual item into lists
+  // Compile any filled individual item fields into lists simultaneously
+  const compileAllFilled = () => {
+    const compiledList: CapsuleItem[] = [];
+    const newFilesToUpload: { [itemId: string]: { file: File | Blob; type: "image" | "voice"; name: string } } = {};
+    let timestampOffset = 0;
+
+    // 1. Check Written Letter
+    if (letterText.trim()) {
+      const id = `item-${Date.now()}-${timestampOffset++}`;
+      compiledList.push({
+        id,
+        type: "letter",
+        title: letterTitle.trim() || "Unspoken Ledger",
+        content: letterText.trim()
+      });
+      setLetterTitle("");
+      setLetterText("");
+    }
+
+    // 2. Check Photo Upload
+    if (imageContent || currentImageFile) {
+      const id = `item-${Date.now()}-${timestampOffset++}`;
+      compiledList.push({
+        id,
+        type: "image",
+        title: imageTitle.trim() || imageFileName || "Imaged Memory",
+        content: imageContent,
+        fileName: imageFileName
+      });
+      if (currentImageFile) {
+        newFilesToUpload[id] = { file: currentImageFile, type: "image" as const, name: imageFileName };
+      }
+      setImageTitle("");
+      setImageContent("");
+      setImageFileName("");
+      setCurrentImageFile(null);
+    }
+
+    // 3. Check Voice Recording
+    if (isRecording) {
+      stopVoiceRecording();
+    }
+    if (recordedAudioUrl || currentAudioBlob) {
+      const id = `item-${Date.now()}-${timestampOffset++}`;
+      compiledList.push({
+        id,
+        type: "voice",
+        title: voiceTitle.trim() || "Recorded Accent",
+        content: recordedAudioUrl || "https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg",
+        duration: recordingTimer || 12
+      });
+      if (currentAudioBlob) {
+        newFilesToUpload[id] = { file: currentAudioBlob, type: "voice" as const, name: voiceTitle.trim() || "voice_recording.opus" };
+      }
+      setVoiceTitle("");
+      setRecordedAudioUrl("");
+      setRecordingTimer(0);
+      setCurrentAudioBlob(null);
+    }
+
+    // 4. Check Web Link
+    if (linkUrl.trim()) {
+      const id = `item-${Date.now()}-${timestampOffset++}`;
+      compiledList.push({
+        id,
+        type: "link",
+        title: linkTitle.trim() || "Web Anchor",
+        content: linkUrl.trim().startsWith("http") ? linkUrl.trim() : `https://${linkUrl.trim()}`
+      });
+      setLinkTitle("");
+      setLinkUrl("");
+    }
+
+    if (compiledList.length > 0) {
+      setFilesToUpload(prev => ({ ...prev, ...newFilesToUpload }));
+      setItems(prev => [...prev, ...compiledList]);
+    }
+
+    return { compiledList, newFilesToUpload };
+  };
+
   const compileItem = () => {
+    const { compiledList } = compileAllFilled();
+    if (compiledList.length === 0) {
+      alert("Please fill out at least one item field (Letter, Photo, Voice, or Link) before compiling.");
+    }
+  };
+
+  const compileItemOld = () => {
+    return;
     let newItem: CapsuleItem | null = null;
 
     if (itemType === "letter" && letterText.trim()) {
@@ -291,7 +395,13 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
       alert("Please provide an archival title for this capsule.");
       return;
     }
-    if (items.length === 0) {
+
+    // Automatically compile any pending items that are filled but not yet explicitly compiled
+    const { compiledList, newFilesToUpload } = compileAllFilled();
+    const finalItems = [...items, ...compiledList];
+    const finalFilesToUpload = { ...filesToUpload, ...newFilesToUpload };
+
+    if (finalItems.length === 0) {
       alert("A quiet archive requires at least one memory, letter, photo, or audio recording inside.");
       return;
     }
@@ -301,13 +411,13 @@ export default function CreateCapsule({ onBack, onSave }: CreateCapsuleProps) {
 
     try {
       const capsuleId = `capsule-${Date.now()}`;
-      const uploadedItems = [...items];
+      const uploadedItems = [...finalItems];
 
       // Upload files to Cloudinary sequentially, with progress tracking
       for (let i = 0; i < uploadedItems.length; i++) {
         const item = uploadedItems[i];
-        if (filesToUpload[item.id]) {
-          const uploadEntry = filesToUpload[item.id];
+        if (finalFilesToUpload[item.id]) {
+          const uploadEntry = finalFilesToUpload[item.id];
           setSaveProgressMsg(`Preparing memory: ${item.title}...`);
           
           // Convert Blob to File if needed

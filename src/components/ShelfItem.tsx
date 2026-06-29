@@ -12,9 +12,10 @@ interface ShelfItemProps {
   key?: string;
   capsule: Capsule;
   onSelect: (capsule: Capsule) => void;
+  isPulling?: boolean;
 }
 
-export default function ShelfItem({ capsule, onSelect }: ShelfItemProps) {
+export default function ShelfItem({ capsule, onSelect, isPulling = false }: ShelfItemProps) {
   const isLocked = new Date(capsule.unlockDate) > new Date();
   const isReady = !isLocked && !capsule.isOpened;
   const isOpened = !isLocked && capsule.isOpened;
@@ -31,14 +32,31 @@ export default function ShelfItem({ capsule, onSelect }: ShelfItemProps) {
   return (
     <div
       onClick={() => onSelect(capsule)}
-      className={`group relative flex flex-col justify-end items-center select-none transition-all duration-500 transform-gpu cursor-pointer
-        ${isLocked ? "scale-92 translate-y-2 opacity-85 hover:opacity-100 hover:scale-96 hover:translate-y-0 filter brightness-75 hover:brightness-95" : ""}
-        ${isReady ? "scale-102 translate-y-[-6px] filter brightness-105 active:scale-100 shadow-[0_12px_24px_rgba(197,160,89,0.25)] hover:shadow-[0_16px_32px_rgba(197,160,89,0.45)]" : ""}
-        ${isOpened ? "scale-98 hover:scale-102 hover:translate-y-[-2px] hover:brightness-110 active:scale-96" : ""}
+      className={`group relative flex flex-col justify-end items-center select-none transition-all duration-[850ms] ease-out transform-gpu cursor-pointer
+        ${isPulling 
+          ? "translate-y-[-40px] scale-[1.08] z-50 brightness-110 filter" 
+          : isLocked 
+            ? "scale-92 translate-y-2 opacity-85 hover:opacity-100 hover:scale-96 hover:translate-y-0 filter brightness-75 hover:brightness-95" 
+            : isReady 
+              ? "scale-102 translate-y-[-6px] filter brightness-105 active:scale-100 shadow-[0_12px_24px_rgba(197,160,89,0.25)] hover:shadow-[0_16px_32px_rgba(197,160,89,0.45)]" 
+              : "scale-98 hover:scale-102 hover:translate-y-[-2px] hover:brightness-110 active:scale-96"
+        }
       `}
-      style={{ perspective: "1000px" }}
+      style={{ 
+        perspective: "1000px",
+        boxShadow: isPulling ? "0 25px 50px -12px rgba(197, 160, 89, 0.55), 0 0 30px 10px rgba(197, 160, 89, 0.25)" : undefined
+      }}
       id={`shelf-item-${capsule.id}`}
     >
+      {/* Immersive Golden pull aura */}
+      {isPulling && (
+        <div className="absolute inset-0 pointer-events-none rounded-sm z-30 animate-gold-glow">
+          {/* Subtle floating particles rising from the pulled item */}
+          <div className="absolute bottom-4 left-[20%] w-1.5 h-1.5 rounded-full bg-[#C5A059] animate-particle-float opacity-90"></div>
+          <div className="absolute bottom-12 left-[50%] w-1 h-1 rounded-full bg-[#C5A059] animate-particle-float opacity-80" style={{ animationDelay: "0.2s" }}></div>
+          <div className="absolute bottom-8 left-[80%] w-2 h-2 rounded-full bg-[#C5A059] animate-particle-float opacity-70" style={{ animationDelay: "0.5s" }}></div>
+        </div>
+      )}
       {/* State Badge floating just above */}
       <div className="absolute top-[-36px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-30">
         <div className="bg-[#14110F] text-[#F2EFE9] border border-[#2D241E] px-2 py-1 rounded-sm text-[10px] tracking-widest uppercase font-sans whitespace-nowrap shadow-md">

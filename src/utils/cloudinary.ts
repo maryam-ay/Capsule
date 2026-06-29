@@ -20,9 +20,8 @@ export function uploadToCloudinary(
   resourceType: "image" | "video",
   options: CloudinaryUploadOptions = {}
 ): Promise<string> {
-  const metaEnv = (import.meta as any).env || {};
-  const cloudName = options.cloudName || metaEnv.VITE_CLOUDINARY_CLOUD_NAME;
-  const uploadPreset = options.uploadPreset || metaEnv.VITE_CLOUDINARY_UPLOAD_PRESET;
+  const cloudName = options.cloudName || import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = options.uploadPreset || import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
   if (!cloudName || !uploadPreset) {
     return Promise.reject(

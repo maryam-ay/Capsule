@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { Capsule, ViewState } from "./types";
 import { getCapsules, saveCapsules } from "./utils/storage";
 import { auth } from "./utils/firebase";
-import { onAuthStateChanged, signOutUser, getUserCapsules, saveCapsuleToFirestore } from "./utils/firebaseStorage";
+import { onAuthStateChanged, signOutUser, getUserCapsules, saveCapsuleToFirestore, deleteCapsuleFromFirestore } from "./utils/firebaseStorage";
 import { User } from "firebase/auth";
 import LibraryShelves from "./components/LibraryShelves";
 import CapsuleDesk from "./components/CapsuleDesk";
@@ -25,6 +25,9 @@ export default function App() {
   
   // Gift link token check
   const [giftId, setGiftId] = useState<string | null>(null);
+
+  // Custom confirmation state for clearing/resetting shelves
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Load capsules and check URL parameters on mount
   useEffect(() => {
@@ -124,20 +127,38 @@ export default function App() {
     }
   };
 
+  // Delete capsule permanently (verification already handled by CapsuleDesk's beautiful inline confirmation state)
+  const handleDeleteCapsule = async (capsuleId: string) => {
+    const nextCapsules = capsules.filter((c) => c.id !== capsuleId);
+    setCapsules(nextCapsules);
+    setSelectedCapsule(null);
+    setView("library");
+    if (user) {
+      if (user.uid === "guest-user") {
+        saveCapsules(nextCapsules);
+      } else {
+        try {
+          await deleteCapsuleFromFirestore(capsuleId);
+        } catch (err) {
+          console.error("Failed to delete capsule from Firestore:", err);
+          alert("Failed to delete capsule from cloud. Please try again.");
+        }
+      }
+    }
+  };
+
   // Reset/Clear Archive back to factory default
   const handleResetArchive = async () => {
-    if (window.confirm("Are you sure you want to clear your current library? This will refresh your showcase.")) {
-      if (user) {
-        if (user.uid === "guest-user") {
-          localStorage.removeItem("capsule_archive");
-          const defaults = getCapsules();
-          setCapsules(defaults);
-        } else {
-          setCapsules([]);
-        }
-        setView("library");
-        setSelectedCapsule(null);
+    if (user) {
+      if (user.uid === "guest-user") {
+        localStorage.removeItem("capsule_archive");
+        const defaults = getCapsules();
+        setCapsules(defaults);
+      } else {
+        setCapsules([]);
       }
+      setView("library");
+      setSelectedCapsule(null);
     }
   };
 
@@ -202,7 +223,7 @@ export default function App() {
 
               {/* Maintenance Reset database button */}
               <button
-                onClick={handleResetArchive}
+                onClick={() => setShowResetConfirm(true)}
                 className="p-1.5 rounded-sm bg-[#14110F] hover:bg-[#2D241E] border border-[#2D241E] text-[#F2EFE9]/40 hover:text-[#F2EFE9]/80 transition-all ml-1 shadow-sm"
                 title="Clear current shelves"
                 id="header-btn-reset"
@@ -295,6 +316,7 @@ export default function App() {
                     }
                   }}
                   onUpdateCapsule={handleUpdateCapsule}
+                  onDeleteCapsule={handleDeleteCapsule}
                 />
               </div>
             )}
@@ -327,6 +349,125 @@ export default function App() {
         )}
 
       </main>
+
+      {/* Integration & Environment Diagnostic Control Panel (Temporary Debug Widget) */}
+      <footer className="mt-16 mx-auto max-w-4xl px-4 select-text">
+        <div className="bg-[#14110F]/90 border border-[#2D241E] rounded-sm p-5 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-[#2D241E] pb-3">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-[#C5A059]" />
+              <h3 style={{ fontFamily: "Georgia, serif" }} className="text-sm font-medium text-[#F2EFE9] tracking-wide">
+                Archivist System Integration Diagnostics
+              </h3>
+            </div>
+            <span className="text-[10px] font-mono bg-[#C5A059]/10 text-[#C5A059] border border-[#C5A059]/30 px-2.5 py-0.5 rounded-sm uppercase tracking-wider">
+              System Live
+            </span>
+          </div>
+
+          <p className="text-xs text-[#F2EFE9]/60 leading-relaxed font-sans">
+            To prevent exposing credentials in code repositories, the system detects values from the secure <code className="text-[#C5A059] font-mono px-1 py-0.5 bg-[#1A1614] rounded-xs">.env</code> configuration. Below is the active runtime binding status analyzed directly by the Vite bundler:
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {/* Cloudinary Bindings */}
+            <div className="bg-[#1A1614] border border-[#2D241E]/80 rounded-sm p-3.5 space-y-2.5">
+              <span className="text-[10px] font-mono text-[#C5A059]/70 uppercase tracking-widest block">Cloudinary Media Gateway</span>
+              
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-[#F2EFE9]/40">VITE_CLOUDINARY_CLOUD_NAME</span>
+                  {import.meta.env.VITE_CLOUDINARY_CLOUD_NAME ? (
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-xs font-sans font-medium">
+                      ✓ Present
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded-xs font-sans font-medium animate-pulse">
+                      ✗ Missing
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-[#F2EFE9]/40">VITE_CLOUDINARY_UPLOAD_PRESET</span>
+                  {import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET ? (
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-xs font-sans font-medium">
+                      ✓ Present
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded-xs font-sans font-medium animate-pulse">
+                      ✗ Missing
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Firebase Bindings */}
+            <div className="bg-[#1A1614] border border-[#2D241E]/80 rounded-sm p-3.5 space-y-2.5">
+              <span className="text-[10px] font-mono text-[#C5A059]/70 uppercase tracking-widest block">Firebase Storage & DB Vault</span>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-[#F2EFE9]/40">VITE_FIREBASE_API_KEY</span>
+                  {import.meta.env.VITE_FIREBASE_API_KEY ? (
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-xs font-sans font-medium">
+                      ✓ Present
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded-xs font-sans font-medium animate-pulse">
+                      ✗ Missing
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-[#F2EFE9]/40">VITE_FIREBASE_PROJECT_ID</span>
+                  {import.meta.env.VITE_FIREBASE_PROJECT_ID ? (
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-xs font-sans font-medium">
+                      ✓ Present
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded-xs font-sans font-medium animate-pulse">
+                      ✗ Missing
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#14110F] border border-[#2D241E] rounded-md max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 style={{ fontFamily: "Georgia, serif" }} className="text-lg font-bold text-rose-400">
+              Clear Library Shelves
+            </h3>
+            <p className="text-sm text-[#F2EFE9]/70 leading-relaxed font-sans">
+              Are you sure you want to clear your current library? This will delete all custom capsules and reset your showcase to the default collection. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="px-4 py-2 rounded-sm bg-zinc-900 hover:bg-zinc-800 border border-[#2D241E] text-zinc-300 text-xs font-mono uppercase tracking-wider transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleResetArchive();
+                  setShowResetConfirm(false);
+                }}
+                className="px-4 py-2 rounded-sm bg-rose-800 hover:bg-rose-700 text-[#F2EFE9] text-xs font-bold font-sans uppercase tracking-wider transition-all shadow-lg"
+              >
+                Clear Shelves
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

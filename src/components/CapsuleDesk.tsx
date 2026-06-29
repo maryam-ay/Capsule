@@ -9,16 +9,17 @@ import { getCapsuleColorClasses } from "../utils/storage";
 import { 
   ArrowLeft, Lock, Unlock, Calendar, Clock, BookOpen, 
   FileText, Image, Volume2, Link as LinkIcon, Play, Pause, 
-  ExternalLink, Copy, Check, Gift, VolumeX, RotateCcw
+  ExternalLink, Copy, Check, Gift, VolumeX, RotateCcw, Trash2
 } from "lucide-react";
 
 interface CapsuleDeskProps {
   capsule: Capsule;
   onBack: () => void;
   onUpdateCapsule: (updated: Capsule) => void;
+  onDeleteCapsule?: (capsuleId: string) => void;
 }
 
-export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule }: CapsuleDeskProps) {
+export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule, onDeleteCapsule }: CapsuleDeskProps) {
   const isLocked = new Date(capsule.unlockDate) > new Date();
   
   // Timer countdown state
@@ -39,10 +40,13 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule }: Capsul
   // Audio state
   const [playingItem, setPlayingItem] = useState<string | null>(null);
   const [audioProgress, setAudioProgress] = useState(0);
-  const audioIntervalRef = useRef<number | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   // Copy gift link state
   const [isCopied, setIsCopied] = useState(false);
+
+  // Delete confirmation state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Active viewed item inside the opened capsule
   const [activeItem, setActiveItem] = useState<CapsuleItem | null>(null);
@@ -109,37 +113,55 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule }: Capsul
     }, 1200);
   };
 
-  // Audio Playback Simulator
+  // Real Audio Playback Controller
   const toggleAudio = (item: CapsuleItem) => {
+    if (!audioPlayerRef.current) return;
+
     if (playingItem === item.id) {
       // Pause
+      audioPlayerRef.current.pause();
       setPlayingItem(null);
-      if (audioIntervalRef.current) {
-        clearInterval(audioIntervalRef.current);
-        audioIntervalRef.current = null;
-      }
     } else {
       // Play
-      setPlayingItem(item.id);
-      const duration = item.duration || 30;
-      audioIntervalRef.current = window.setInterval(() => {
-        setAudioProgress((prev) => {
-          if (prev >= 100) {
-            setPlayingItem(null);
-            if (audioIntervalRef.current) clearInterval(audioIntervalRef.current);
-            return 0;
+      let audioUrl = item.content;
+      
+      // If it's a Cloudinary URL, ensure we transcode it to .mp3 on-the-fly for universal compatibility
+      if (audioUrl.includes("res.cloudinary.com")) {
+        const parts = audioUrl.split('.');
+        if (parts.length > 1) {
+          const lastPart = parts[parts.length - 1].toLowerCase();
+          if (["webm", "ogg", "opus", "wav", "aac", "m4a"].includes(lastPart)) {
+            parts[parts.length - 1] = "mp3";
+            audioUrl = parts.join('.');
           }
-          return prev + (100 / duration);
+        }
+      }
+
+      // Set the audio source and load it
+      audioPlayerRef.current.src = audioUrl;
+      audioPlayerRef.current.load();
+      audioPlayerRef.current.volume = 1.0; // Ensure it's not muted or quiet
+      
+      audioPlayerRef.current.play()
+        .then(() => {
+          setPlayingItem(item.id);
+        })
+        .catch((err) => {
+          console.error("Audio playback failed:", err);
+          alert("Audio playback failed. The audio driver might be blocked, or the file format is not supported by your browser. Please try again.");
+          setPlayingItem(null);
         });
-      }, 1000);
     }
   };
 
   useEffect(() => {
-    return () => {
-      if (audioIntervalRef.current) clearInterval(audioIntervalRef.current);
-    };
-  }, []);
+    // Stop audio when component unmounts or active item changes
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+    }
+    setPlayingItem(null);
+    setAudioProgress(0);
+  }, [activeItem]);
 
   const generateGiftLink = () => {
     const baseUrl = window.location.origin + window.location.pathname;
@@ -423,16 +445,30 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule }: Capsul
 
         {/* CEREMONIAL WORKSTATION TRANSITIONS ANIMATION */}
         {isOpeningInProgress && (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-[#14110F]/95 relative z-30">
+          <div className={`flex-1 flex flex-col items-center justify-center p-8 text-center bg-[#14110F]/97 relative z-30 transition-all duration-500 ${ceremonyStep === "breaking" ? "shadow-[inset_0_0_100px_rgba(197,160,89,0.3)] border border-[#C5A059]/30" : ""}`}>
+            {ceremonyStep === "breaking" && (
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full border-4 border-[#C5A059]/40 animate-ping opacity-75"></div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full border border-[#C5A059]/20 animate-ping opacity-50 [animation-delay:0.3s]"></div>
+                {/* Floating particle elements */}
+                <div className="absolute bottom-4 left-[20%] w-2 h-2 rounded-full bg-[#C5A059] animate-particle-float opacity-80" style={{ animationDelay: "0.1s" }}></div>
+                <div className="absolute bottom-10 left-[40%] w-1.5 h-1.5 rounded-full bg-[#C5A059] animate-particle-float opacity-90" style={{ animationDelay: "0.4s" }}></div>
+                <div className="absolute bottom-2 left-[60%] w-2.5 h-2.5 rounded-full bg-[#C5A059] animate-particle-float opacity-70" style={{ animationDelay: "0.7s" }}></div>
+                <div className="absolute bottom-12 left-[80%] w-1.5 h-1.5 rounded-full bg-[#C5A059] animate-particle-float opacity-80" style={{ animationDelay: "1.1s" }}></div>
+                <div className="absolute bottom-8 left-[30%] w-2 h-2 rounded-full bg-[#C5A059] animate-particle-float opacity-60" style={{ animationDelay: "0.2s" }}></div>
+                <div className="absolute bottom-6 left-[70%] w-1 h-1 rounded-full bg-[#C5A059] animate-particle-float opacity-100" style={{ animationDelay: "0.9s" }}></div>
+              </div>
+            )}
+
             <div className="max-w-md">
               
               {/* Simulated ritual progression */}
-              <div className="relative w-28 h-28 mx-auto mb-8 flex items-center justify-center">
+              <div className={`relative w-28 h-28 mx-auto mb-8 flex items-center justify-center ${ceremonyStep === "breaking" ? "animate-rumble" : ""}`}>
                 <div className="absolute inset-0 rounded-full border-4 border-t-[#C5A059] border-r-transparent border-b-transparent border-l-transparent animate-spin duration-1000"></div>
                 <div className="absolute inset-2 rounded-full border-2 border-dashed border-[#C5A059]/40"></div>
                 
                 {ceremonyStep === "unbolting" && <Lock className="w-8 h-8 text-[#C5A059] animate-pulse" />}
-                {ceremonyStep === "breaking" && <Unlock className="w-8 h-8 text-red-500 animate-ping" />}
+                {ceremonyStep === "breaking" && <Unlock className="w-8 h-8 text-red-400 animate-pulse" />}
                 {ceremonyStep === "opened" && <BookOpen className="w-8 h-8 text-emerald-400" />}
               </div>
 
@@ -520,6 +556,50 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule }: Capsul
                   </div>
                 </div>
               )}
+
+              {/* Danger Zone: Delete Capsule Entry after it is opened */}
+              <div className="mt-8 pt-4 border-t border-[#2D241E]/80 space-y-2">
+                <div className="text-[10px] text-rose-500/80 tracking-wider font-mono uppercase">Danger Zone</div>
+                
+                {!showDeleteConfirm ? (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full flex items-center justify-center gap-1.5 bg-rose-950/25 hover:bg-rose-900/40 border border-rose-800/40 text-rose-300 hover:text-rose-200 px-3 py-2 rounded-sm text-[11px] font-sans font-medium transition-all"
+                    id="desk-btn-delete-capsule"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Delete Capsule Archive</span>
+                  </button>
+                ) : (
+                  <div className="bg-rose-950/20 border border-rose-800/40 p-3 rounded-sm space-y-3 text-left">
+                    <p className="text-[11px] text-rose-300 leading-normal font-sans">
+                      Are you sure you want to permanently delete this archive? This action is irreversible.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (onDeleteCapsule) {
+                            onDeleteCapsule(capsule.id);
+                          } else {
+                            alert("Deletion is only available from the main library scope.");
+                          }
+                        }}
+                        className="flex-1 bg-rose-800 hover:bg-rose-700 text-[#F2EFE9] text-[10px] font-bold py-1.5 rounded-sm uppercase tracking-wider transition-all"
+                        id="desk-btn-confirm-delete"
+                      >
+                        Yes, Delete
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="flex-1 bg-zinc-900 hover:bg-zinc-800 border border-[#2D241E] text-zinc-400 text-[10px] py-1.5 rounded-sm uppercase tracking-wider transition-all"
+                        id="desk-btn-cancel-delete"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* RIGHT WORKPLACE: DYNAMIC READING MAT */}
@@ -566,12 +646,17 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule }: Capsul
                   >
                     {/* The image or SVG procedural display */}
                     <div className="w-full aspect-[4/3] bg-zinc-900 rounded-sm overflow-hidden flex items-center justify-center relative shadow-inner border border-zinc-200">
-                      {activeItem.content.startsWith("data:image/") ? (
+                      {activeItem.content.startsWith("data:image/") || activeItem.content.startsWith("http://") || activeItem.content.startsWith("https://") ? (
                         <img 
                           src={activeItem.content} 
                           alt={activeItem.title}
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"
+                        />
+                      ) : activeItem.content.trim().startsWith("<svg") ? (
+                        <div 
+                          className="w-full h-full p-4 flex items-center justify-center bg-zinc-950 text-[#C5A059] fill-current"
+                          dangerouslySetInnerHTML={{ __html: activeItem.content }}
                         />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center text-zinc-600 bg-zinc-950 p-4">
@@ -727,6 +812,22 @@ export default function CapsuleDesk({ capsule, onBack, onUpdateCapsule }: Capsul
           </div>
         )}
       </div>
+
+      {/* Hidden real audio playback tag */}
+      <audio 
+        ref={audioPlayerRef} 
+        onTimeUpdate={() => {
+          if (audioPlayerRef.current) {
+            const duration = audioPlayerRef.current.duration || activeItem?.duration || 30;
+            const current = audioPlayerRef.current.currentTime;
+            setAudioProgress((current / duration) * 100);
+          }
+        }}
+        onEnded={() => {
+          setPlayingItem(null);
+          setAudioProgress(0);
+        }}
+      />
     </div>
   );
 }
